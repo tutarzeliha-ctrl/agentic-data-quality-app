@@ -1,5 +1,7 @@
 # 🤖 Agentic Data Quality & Anomaly Detection System
 
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://agentic-data-quality-app-bmu3votp3f5yxv2ytn3agq.streamlit.app)
+
 An automated hybrid data quality pipeline that combines deterministic rule-based validation checks with LLM-driven root cause analysis (powered by Llama 3 via Groq), exposed through an interactive Streamlit dashboard.
 
 ## 🚀 Features
