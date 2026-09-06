@@ -1,9 +1,10 @@
 import streamlit as st
 import pandas as pd
 import os
-from agents.quality_agent import DataQualityAgent
 from connectors.base_connector import DataConnector
 from metadata.tracker import MetadataTracker
+from agents.multi_agents import ValidatorAgent, RemediationAgent, ReporterAgent
+from utils.slack_alert import send_slack_alert
 
 st.set_page_config(
     page_title="Agentic Data Quality Platform",
@@ -14,45 +15,65 @@ st.set_page_config(
 # Initialize Metadata Tracker
 tracker = MetadataTracker()
 
+# Base directory for absolute path resolution
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 st.title("🤖 Enterprise Agentic Data Quality & Anomaly Detection")
-st.markdown("Automated hybrid data quality pipeline combining rule-based checks with AI-driven root cause analysis and metadata tracking.")
+st.markdown("Automated hybrid data quality pipeline combining multi-agent validation with metadata tracking and alerts.")
 
 # Sidebar Controls
 st.sidebar.header("Pipeline Configuration")
 source_option = st.sidebar.selectbox("Select Data Source", ["Local CSV", "Custom Upload"])
 
-data_path = "sample_data.csv"
+data_path = os.path.join(BASE_DIR, "sample_data.csv")
 if source_option == "Custom Upload":
     uploaded_file = st.sidebar.file_uploader("Upload CSV file", type=["csv"])
     if uploaded_file is not None:
-        data_path = "uploaded_temp.csv"
+        data_path = os.path.join(BASE_DIR, "uploaded_temp.csv")
         with open(data_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
 
+st.sidebar.markdown("---")
+st.sidebar.header("Notifications")
+slack_webhook = st.sidebar.text_input("Slack Webhook URL (Optional)", type="password")
+
 # Run Quality Check Button
 if st.sidebar.button("Run Quality Pipeline & AI Analysis", type="primary"):
-    with st.spinner("Executing pipeline, validating rules, and invoking AI agent..."):
+    with st.spinner("Executing multi-agent pipeline and validating dataset..."):
         try:
             # 1. Load Data via Connector
             connector = DataConnector("csv", data_path)
             df = connector.load_data()
             
-            # 2. Run Quality Agent
-            agent = DataQualityAgent(data_path)
-            report = agent.run_validation()
+            # 2. Run Multi-Agent Architecture
+            validator = ValidatorAgent(df)
+            validation_metrics = validator.validate()
+            
+            remediator = RemediationAgent(validation_metrics)
+            remediation_fixes = remediator.suggest_fixes()
             
             # 3. Calculate metrics for logging
-            total_rows = len(df)
-            missing_vals = int(df.isnull().sum().sum())
-            invalid_status = int((df['status'] == 'UNKNOWN').sum()) if 'status' in df.columns else 0
+            total_rows = validation_metrics["total_rows"]
+            missing_vals = int(sum(validation_metrics["missing_values"].values()))
+            invalid_status = validation_metrics["invalid_status_count"]
             
             # Quality score heuristic
             quality_score = max(0.0, 100.0 - ((missing_vals + invalid_status) / (total_rows * max(1, len(df.columns))) * 100))
             
-            # 4. Log to Metadata Store
+            # 4. Generate Executive Report via Reporter Agent
+            reporter = ReporterAgent(quality_score, remediation_fixes)
+            report = reporter.generate_executive_report()
+            
+            # 5. Log to Metadata Store
             tracker.log_run(total_rows, missing_vals, invalid_status, quality_score)
             
-            st.success("Pipeline executed successfully and metrics logged to metadata store!")
+            # 6. Send Slack Alert if Webhook is Provided
+            if slack_webhook:
+                alert_sent = send_slack_alert(slack_webhook, quality_score, total_rows, missing_vals)
+                if alert_sent:
+                    st.sidebar.success("Slack alert sent successfully!")
+            
+            st.success("Multi-agent pipeline executed successfully and logged!")
             
             # Display Results
             col1, col2, col3 = st.columns(3)
@@ -63,7 +84,7 @@ if st.sidebar.button("Run Quality Pipeline & AI Analysis", type="primary"):
             st.subheader("📊 Dataset Preview")
             st.dataframe(df.head(10))
             
-            st.subheader("🧠 AI Agent Root Cause Analysis")
+            st.subheader("🧠 Multi-Agent Executive Report")
             st.markdown(report)
             
         except Exception as e:
